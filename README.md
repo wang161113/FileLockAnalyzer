@@ -4,7 +4,7 @@
 
 **File Lock Analyzer** — a native Windows desktop tool (C++17 / MFC) that tells you *"which process is holding this file/folder"*, and provides multiple unlock strategies: kill process, force-close remote handle, unload DLL, etc. It also ships with a Windows Explorer right-click context menu integration.
 
-![logo](FileUsageAnalyzer_256.png)
+![logo](FileUsageAnalyzer_256.png) ![Screenshot (English UI)](docs/screenshot_en.png)
 
 ## Features
 

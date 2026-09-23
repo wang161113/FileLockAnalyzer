@@ -4,7 +4,7 @@
 
 **文件占用分析工具** — 基于 C++17 / MFC 的 Windows 桌面工具，用于识别「哪个进程占用了这个文件/文件夹」，并提供解除占用、卸载 DLL、强制关闭句柄等操作。支持资源管理器右键菜单集成。
 
-![logo](FileUsageAnalyzer_256.png)
+![logo](FileUsageAnalyzer_256.png) ![界面截图（中文）](docs/screenshot_zh.png)
 
 ## 功能特性
 
