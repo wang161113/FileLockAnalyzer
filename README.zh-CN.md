@@ -1,6 +1,6 @@
 # FileUsageAnalyzer
 
-> 其他语言：[English](./README.md)
+[![English](https://img.shields.io/badge/English-373737?style=for-the-badge&logo=none&logoColor=white)](./README.md) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-0078D4?style=for-the-badge&logo=none&logoColor=white)](#)
 
 **文件占用分析工具** — 基于 C++17 / MFC 的 Windows 桌面工具，用于识别「哪个进程占用了这个文件/文件夹」，并提供解除占用、卸载 DLL、强制关闭句柄等操作。支持资源管理器右键菜单集成。
 

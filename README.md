@@ -1,6 +1,6 @@
 # FileUsageAnalyzer
 
-> Read this in other languages: [中文](./README.zh-CN.md)
+[![English](https://img.shields.io/badge/English-0078D4?style=for-the-badge&logo=none&logoColor=white)](#) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-373737?style=for-the-badge&logo=none&logoColor=white)](./README.zh-CN.md)
 
 **File Lock Analyzer** — a native Windows desktop tool (C++17 / MFC) that tells you *"which process is holding this file/folder"*, and provides multiple unlock strategies: kill process, force-close remote handle, unload DLL, etc. It also ships with a Windows Explorer right-click context menu integration.
 
