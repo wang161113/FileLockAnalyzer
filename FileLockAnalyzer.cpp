@@ -1,12 +1,12 @@
 #include "stdafx.h"
-#include "FileUsageAnalyzer.h"
+#include "FileLockAnalyzer.h"
 #include "MainDlg.h"
 #include <shellapi.h>
 
 UINT g_msgIsInstance   = 0;
 UINT g_msgShowInstance = 0;
 
-CFileUsageAnalyzerApp theApp;
+CFileLockAnalyzerApp theApp;
 
 static void TraceF(LPCTSTR lpszFmt, ...)
 {
@@ -15,7 +15,7 @@ static void TraceF(LPCTSTR lpszFmt, ...)
     TCHAR szBuf[512];
     _vstprintf_s(szBuf, lpszFmt, args);
     va_end(args);
-    ::OutputDebugString(_T("[FUA] "));
+    ::OutputDebugString(_T("[FLA] "));
     ::OutputDebugString(szBuf);
     ::OutputDebugString(_T("\n"));
 }
@@ -36,7 +36,7 @@ static bool IsOurProcessWindow(HWND hWnd)
     if (!bOk) return false;
     LPCTSTR pName = _tcsrchr(szPath, _T('\\'));
     if (pName) pName++; else pName = szPath;
-    return (_tcsicmp(pName, _T("FileUsageAnalyzer.exe")) == 0);
+    return (_tcsicmp(pName, _T("FileLockAnalyzer.exe")) == 0);
 }
 
 static bool IsCurrentProcessAdmin()
@@ -104,12 +104,12 @@ static BOOL CALLBACK EnumFindInstanceProc(HWND hWnd, LPARAM lParam)
     return TRUE;
 }
 
-CFileUsageAnalyzerApp::CFileUsageAnalyzerApp()
+CFileLockAnalyzerApp::CFileLockAnalyzerApp()
     : m_hMutexSingle(NULL)
 {
 }
 
-bool CFileUsageAnalyzerApp::EnsureSingleInstance(HWND* phFoundPrevWnd, CString& outPathArg)
+bool CFileLockAnalyzerApp::EnsureSingleInstance(HWND* phFoundPrevWnd, CString& outPathArg)
 {
     outPathArg.Empty();
     if (phFoundPrevWnd) *phFoundPrevWnd = NULL;
@@ -118,9 +118,9 @@ bool CFileUsageAnalyzerApp::EnsureSingleInstance(HWND* phFoundPrevWnd, CString& 
     TraceF(_T("Start. cmdline=%s"), strCmdLine);
 
     if (!g_msgIsInstance)
-        g_msgIsInstance   = ::RegisterWindowMessage(_T("FileUsageAnalyzer.IsInstance"));
+        g_msgIsInstance   = ::RegisterWindowMessage(_T("FileLockAnalyzer.IsInstance"));
     if (!g_msgShowInstance)
-        g_msgShowInstance = ::RegisterWindowMessage(_T("FileUsageAnalyzer.ShowInstance"));
+        g_msgShowInstance = ::RegisterWindowMessage(_T("FileLockAnalyzer.ShowInstance"));
 
     // 1) 一次性管理命令（/shellregister /shellunregister）绝对白名单，不参与任何单实例检测
     bool bShellCmd = false;
@@ -242,7 +242,7 @@ bool CFileUsageAnalyzerApp::EnsureSingleInstance(HWND* phFoundPrevWnd, CString& 
     return true;
 }
 
-BOOL CFileUsageAnalyzerApp::InitInstance()
+BOOL CFileLockAnalyzerApp::InitInstance()
 {
     if (!CWinApp::InitInstance())
         return FALSE;
@@ -255,7 +255,7 @@ BOOL CFileUsageAnalyzerApp::InitInstance()
         return FALSE;
     }
 
-    SetRegistryKey(_T("FileUsageAnalyzer"));
+    SetRegistryKey(_T("FileLockAnalyzer"));
 
     ::CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
 
@@ -302,7 +302,7 @@ BOOL CFileUsageAnalyzerApp::InitInstance()
     return FALSE;
 }
 
-int CFileUsageAnalyzerApp::ExitInstance()
+int CFileLockAnalyzerApp::ExitInstance()
 {
     if (m_hMutexSingle) { ::CloseHandle(m_hMutexSingle); m_hMutexSingle = NULL; }
     return CWinApp::ExitInstance();

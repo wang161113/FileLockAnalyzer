@@ -1,6 +1,6 @@
 #include "stdafx.h"
 #include "MainDlg.h"
-#include "FileUsageAnalyzer.h"
+#include "FileLockAnalyzer.h"
 
 IMPLEMENT_DYNAMIC(CMainDlg, CDialogEx)
 
@@ -1128,9 +1128,9 @@ bool CMainDlg::RegisterShellMenu()
 
     struct SRootCfg { LPCTSTR lpszSubKey; LPCTSTR lpszCmdFmt; bool bBackground; };
     const SRootCfg roots[3] = {
-        { _T("Directory\\shell\\FileUsageAnalyzer"),               _T("\"%s\" \"%%1\""), false },
-        { _T("Directory\\Background\\shell\\FileUsageAnalyzer"),   _T("\"%s\" \"%%V\""), true  },
-        { _T("AllFilesystemObjects\\shell\\FileUsageAnalyzer"),    _T("\"%s\" \"%%1\""), false },
+        { _T("Directory\\shell\\FileLockAnalyzer"),               _T("\"%s\" \"%%1\""), false },
+        { _T("Directory\\Background\\shell\\FileLockAnalyzer"),   _T("\"%s\" \"%%V\""), true  },
+        { _T("AllFilesystemObjects\\shell\\FileLockAnalyzer"),    _T("\"%s\" \"%%1\""), false },
     };
 
     bool bAllOk = true;
@@ -1163,7 +1163,10 @@ bool CMainDlg::RegisterShellMenu()
 
 bool CMainDlg::UnregisterShellMenu()
 {
-    LPCTSTR szRoots[3] = {
+    LPCTSTR szRoots[6] = {
+        _T("Directory\\shell\\FileLockAnalyzer"),
+        _T("Directory\\Background\\shell\\FileLockAnalyzer"),
+        _T("AllFilesystemObjects\\shell\\FileLockAnalyzer"),
         _T("Directory\\shell\\FileUsageAnalyzer"),
         _T("Directory\\Background\\shell\\FileUsageAnalyzer"),
         _T("AllFilesystemObjects\\shell\\FileUsageAnalyzer"),
@@ -1174,7 +1177,11 @@ bool CMainDlg::UnregisterShellMenu()
         if (!RegDeleteTree(HKEY_LOCAL_MACHINE, CString(_T("Software\\Classes\\")) + szRoots[k])) bAllOk = false;
         if (!RegDeleteTree(HKEY_CURRENT_USER,  CString(_T("Software\\Classes\\")) + szRoots[k])) bAllOk = false;
     }
-    LPCTSTR szOldRoots[4] = {
+    LPCTSTR szOldRoots[8] = {
+        _T("*\\shell\\FileLockAnalyzer"),
+        _T("Directory\\shell\\FileLockAnalyzer"),
+        _T("Directory\\Background\\shell\\FileLockAnalyzer"),
+        _T("AllFilesystemObjects\\shell\\FileLockAnalyzer"),
         _T("*\\shell\\FileUsageAnalyzer"),
         _T("Directory\\shell\\FileUsageAnalyzer"),
         _T("Directory\\Background\\shell\\FileUsageAnalyzer"),

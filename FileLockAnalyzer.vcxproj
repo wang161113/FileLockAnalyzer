@@ -21,7 +21,7 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
     <ProjectGuid>{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}</ProjectGuid>
-    <RootNamespace>FileUsageAnalyzer</RootNamespace>
+    <RootNamespace>FileLockAnalyzer</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -198,7 +198,7 @@
     <ClInclude Include="targetver.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="stdafx.h" />
-    <ClInclude Include="FileUsageAnalyzer.h" />
+    <ClInclude Include="FileLockAnalyzer.h" />
     <ClInclude Include="MainDlg.h" />
     <ClInclude Include="FileLockDetector.h" />
   </ItemGroup>
@@ -206,12 +206,12 @@
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="FileUsageAnalyzer.cpp" />
+    <ClCompile Include="FileLockAnalyzer.cpp" />
     <ClCompile Include="MainDlg.cpp" />
     <ClCompile Include="FileLockDetector.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="FileUsageAnalyzer.rc" />
+    <ResourceCompile Include="FileLockAnalyzer.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -1,4 +1,4 @@
-# FileUsageAnalyzer
+# FileLockAnalyzer
 
 [![English](https://img.shields.io/badge/English-0078D4?style=for-the-badge&logo=none&logoColor=white)](#) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-373737?style=for-the-badge&logo=none&logoColor=white)](./README.zh-CN.md)
 
@@ -33,15 +33,15 @@
 
 ```bat
 :: x64 Release
-msbuild FileUsageAnalyzer.sln /t:Rebuild /p:Configuration=Release /p:Platform=x64
+msbuild FileLockAnalyzer.sln /t:Rebuild /p:Configuration=Release /p:Platform=x64
 
 :: x86 Release
-msbuild FileUsageAnalyzer.sln /t:Rebuild /p:Configuration=Release /p:Platform=Win32
+msbuild FileLockAnalyzer.sln /t:Rebuild /p:Configuration=Release /p:Platform=Win32
 ```
 
 Output locations:
-- x64: `x64\Release\FileUsageAnalyzer.exe`
-- x86: `Release\FileUsageAnalyzer.exe`
+- x64: `x64\Release\FileLockAnalyzer.exe`
+- x86: `Release\FileLockAnalyzer.exe`
 
 The project forces the `/utf-8` compiler switch so the Chinese source strings don't need any extra handling.
 
@@ -73,13 +73,13 @@ The single-instance block explicitly whitelists `/shellregister` and `/shellunre
 ## Source layout
 
 ```
-├── FileUsageAnalyzer.sln         # Solution
-├── FileUsageAnalyzer.vcxproj     # Project
-├── FileUsageAnalyzer.rc          # Resources (ICON, dialog, string-table)
-├── FileUsageAnalyzer_256.png     # Logo preview
-├── FileUsageAnalyzer.ico         # Multi-size ICO: 16/32/48/64/128/256
+├── FileLockAnalyzer.sln         # Solution
+├── FileLockAnalyzer.vcxproj     # Project
+├── FileLockAnalyzer.rc          # Resources (ICON, dialog, string-table)
+├── FileLockAnalyzer_256.png     # Logo preview
+├── FileLockAnalyzer.ico         # Multi-size ICO: 16/32/48/64/128/256
 ├── render_logo.py                # Pillow script to build the ICO (Python)
-├── FileUsageAnalyzer.h / .cpp    # CWinApp entry; single-instance; elevation; language detection
+├── FileLockAnalyzer.h / .cpp    # CWinApp entry; single-instance; elevation; language detection
 ├── MainDlg.h / .cpp              # Main dialog: UI, i18n, anchor resize, shell register/unregister, tray, operations
 ├── FileLockDetector.h / .cpp     # Detection engine: Restart Manager + NtQueryInfo dual path
 ├── stdafx.h                      # PCH (includes #pragma comment for Rstrtmgr.lib etc.)
@@ -91,8 +91,8 @@ The single-instance block explicitly whitelists `/shellregister` and `/shellunre
 
 | File | Key symbol | Purpose |
 |---|---|---|
-| FileUsageAnalyzer.cpp | `EnsureSingleInstance` | Whitelist + FindWindow/EnumWindows belt-and-suspenders; allows an elevated instance to live side-by-side with a non-elevated one |
-| FileUsageAnalyzer.cpp | `IsOurProcessWindow` | Validates an HWND really belongs to this executable via `QueryFullProcessImageName`, defeating false positives |
+| FileLockAnalyzer.cpp | `EnsureSingleInstance` | Whitelist + FindWindow/EnumWindows belt-and-suspenders; allows an elevated instance to live side-by-side with a non-elevated one |
+| FileLockAnalyzer.cpp | `IsOurProcessWindow` | Validates an HWND really belongs to this executable via `QueryFullProcessImageName`, defeating false positives |
 | MainDlg.cpp | `PerformAnalysis` | Validates path → calls detector; always shows a `MessageBox` for empty results so a shell-launched invocation never appears to "do nothing" |
 | MainDlg.cpp | `OnClose` | Hides to tray instead of exiting (`SW_HIDE`) |
 | MainDlg.cpp | `RelaunchAsAdmin` | ShellExecute `runas` + `EndDialog` on the old instance so we never go through `WM_CLOSE` (which would otherwise just hide to tray) |

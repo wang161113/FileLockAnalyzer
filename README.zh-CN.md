@@ -1,4 +1,4 @@
-# FileUsageAnalyzer
+# 文件占用分析工具（FileLockAnalyzer）
 
 [![English](https://img.shields.io/badge/English-373737?style=for-the-badge&logo=none&logoColor=white)](./README.md) [![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-0078D4?style=for-the-badge&logo=none&logoColor=white)](#)
 
@@ -33,15 +33,15 @@
 
 ```bat
 :: x64 Release
-msbuild FileUsageAnalyzer.sln /t:Rebuild /p:Configuration=Release /p:Platform=x64
+msbuild FileLockAnalyzer.sln /t:Rebuild /p:Configuration=Release /p:Platform=x64
 
 :: x86 Release
-msbuild FileUsageAnalyzer.sln /t:Rebuild /p:Configuration=Release /p:Platform=Win32
+msbuild FileLockAnalyzer.sln /t:Rebuild /p:Configuration=Release /p:Platform=Win32
 ```
 
 产物路径：
-- x64：`x64\Release\FileUsageAnalyzer.exe`
-- x86：`Release\FileUsageAnalyzer.exe`
+- x64：`x64\Release\FileLockAnalyzer.exe`
+- x86：`Release\FileLockAnalyzer.exe`
 
 项目在 VS 工程里强制开启 `/utf-8` 编译选项，中文源码无需额外设置。
 
@@ -73,13 +73,13 @@ msbuild FileUsageAnalyzer.sln /t:Rebuild /p:Configuration=Release /p:Platform=Wi
 ## 源码结构
 
 ```
-├── FileUsageAnalyzer.sln         # Solution
-├── FileUsageAnalyzer.vcxproj     # Project
-├── FileUsageAnalyzer.rc          # Resources (ICON, dialog, string-table)
-├── FileUsageAnalyzer_256.png     # Logo preview
-├── FileUsageAnalyzer.ico         # Multi-size ICO: 16/32/48/64/128/256
+├── FileLockAnalyzer.sln         # Solution
+├── FileLockAnalyzer.vcxproj     # Project
+├── FileLockAnalyzer.rc          # Resources (ICON, dialog, string-table)
+├── FileLockAnalyzer_256.png     # Logo preview
+├── FileLockAnalyzer.ico         # Multi-size ICO: 16/32/48/64/128/256
 ├── render_logo.py                # Pillow script to build the ICO (Python)
-├── FileUsageAnalyzer.h / .cpp    # CWinApp entry; single-instance; elevation; language detection
+├── FileLockAnalyzer.h / .cpp    # CWinApp entry; single-instance; elevation; language detection
 ├── MainDlg.h / .cpp              # Main dialog: UI, i18n, anchor resize, shell register/unregister, tray, operations
 ├── FileLockDetector.h / .cpp     # Detection engine: Restart Manager + NtQueryInfo dual path
 ├── stdafx.h                      # PCH (includes #pragma comment for Rstrtmgr.lib etc.)
@@ -91,8 +91,8 @@ msbuild FileUsageAnalyzer.sln /t:Rebuild /p:Configuration=Release /p:Platform=Wi
 
 | 文件 | 关键项 | 作用 |
 |---|---|---|
-| FileUsageAnalyzer.cpp | `EnsureSingleInstance` | 白名单 + FindWindow/EnumWindows 双保险，权限升级场景允许并存 |
-| FileUsageAnalyzer.cpp | `IsOurProcessWindow` | 用 `QueryFullProcessImageName` 校验 HWND 真的是本进程，防假阳性 |
+| FileLockAnalyzer.cpp | `EnsureSingleInstance` | 白名单 + FindWindow/EnumWindows 双保险，权限升级场景允许并存 |
+| FileLockAnalyzer.cpp | `IsOurProcessWindow` | 用 `QueryFullProcessImageName` 校验 HWND 真的是本进程，防假阳性 |
 | MainDlg.cpp | `PerformAnalysis` | 路径合法性 → 调 Detector；空结果一定给 MessageBox 反馈，禁止静默 |
 | MainDlg.cpp | `OnClose` | `SW_HIDE` 到托盘，避免点关闭就退出 |
 | MainDlg.cpp | `RelaunchAsAdmin` | ShellExecute runas + 原进程 EndDialog，不走 WM_CLOSE 避免被 OnClose 截住 |

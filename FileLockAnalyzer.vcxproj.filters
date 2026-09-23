@@ -24,7 +24,7 @@
     <ClInclude Include="stdafx.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="FileUsageAnalyzer.h">
+    <ClInclude Include="FileLockAnalyzer.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="MainDlg.h">
@@ -38,7 +38,7 @@
     <ClCompile Include="stdafx.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="FileUsageAnalyzer.cpp">
+    <ClCompile Include="FileLockAnalyzer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="MainDlg.cpp">
@@ -49,7 +49,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="FileUsageAnalyzer.rc">
+    <ResourceCompile Include="FileLockAnalyzer.rc">
       <Filter>资源文件</Filter>
     </ResourceCompile>
   </ItemGroup>

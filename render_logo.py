@@ -91,12 +91,12 @@ def main():
     draw.text((tx, ty), text, fill=C_ZHAN_CN, font=font)
 
     out_dir = r"c:\Users\Administrator\Documents\trae_projects\Handling File Usage"
-    png_path = os.path.join(out_dir, "FileUsageAnalyzer_256.png")
+    png_path = os.path.join(out_dir, "FileLockAnalyzer_256.png")
     img.save(png_path, "PNG")
 
     sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
     imgs = [img.resize(s, Image.LANCZOS) for s in sizes]
-    ico_path = os.path.join(out_dir, "FileUsageAnalyzer.ico")
+    ico_path = os.path.join(out_dir, "FileLockAnalyzer.ico")
     imgs[0].save(ico_path, format="ICO", sizes=sizes, append_images=imgs[1:])
 
     print("Saved:", png_path)
