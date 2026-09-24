@@ -20,7 +20,7 @@ on:
 jobs:
   build:
     name: build (${{ matrix.configuration }}, ${{ matrix.platform }})
-    runs-on: windows-latest
+    runs-on: windows-2022
     strategy:
       fail-fast: false
       matrix:
@@ -30,6 +30,39 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Ensure MFC build tools are installed
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          $installer = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\setup.exe"
+          $installPath = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
+          if (-not $installPath) {
+            throw "Visual Studio installation not found."
+          }
+
+          $msvcRoot = Join-Path $installPath "VC\Tools\MSVC"
+          $toolsetDir = Get-ChildItem $msvcRoot -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $toolsetDir) {
+            throw "MSVC toolset directory not found under $msvcRoot."
+          }
+
+          $mfcX86 = Join-Path $toolsetDir.FullName "atlmfc\lib\x86\mfc140u.lib"
+          $mfcX64 = Join-Path $toolsetDir.FullName "atlmfc\lib\x64\mfc140u.lib"
+          if ((Test-Path $mfcX86) -and (Test-Path $mfcX64)) {
+            Write-Host "MFC libraries already present."
+            exit 0
+          }
+
+          Write-Host "MFC libraries missing. Installing Microsoft.VisualStudio.Component.VC.ATLMFC..."
+          & $installer modify --installPath $installPath --add Microsoft.VisualStudio.Component.VC.ATLMFC --passive --norestart --wait
+          if ($LASTEXITCODE -ne 0) {
+            throw "Visual Studio installer exited with code $LASTEXITCODE."
+          }
+
+          if (-not ((Test-Path $mfcX86) -and (Test-Path $mfcX64))) {
+            throw "MFC libraries are still missing after installation."
+          }
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v3
