@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "MainDlg.h"
 #include "FileLockAnalyzer.h"
+#include <set>
 
 IMPLEMENT_DYNAMIC(CMainDlg, CDialogEx)
 
@@ -61,9 +62,11 @@ enum
     S_MSG_FOUND_N,
     S_MSG_NONE_FOUND,
     S_MSG_CONFIRM_KILL,
+    S_MSG_CONFIRM_KILL_MULTI,
     S_MSG_CONFIRM_DELETE,
     S_MSG_SUCCESS,
     S_MSG_FAILED,
+    S_MSG_KILL_SUMMARY,
     S_MSG_ADMIN_REQ,
     S_MSG_SHELL_REGISTERED,
     S_MSG_SHELL_UNREGISTERED,
@@ -107,9 +110,11 @@ static LPCTSTR g_StrsEN[S_LAST] =
     _T("%d process(es) holding target."),       // S_MSG_FOUND_N
     _T("No locks detected."),                   // S_MSG_NONE_FOUND
     _T("Really terminate process %s (PID %u)?"),// S_MSG_CONFIRM_KILL
+    _T("Really terminate %u selected process(es)?"), // S_MSG_CONFIRM_KILL_MULTI
     _T("Really delete locked file/folder %s?"), // S_MSG_CONFIRM_DELETE
     _T("Success."),                             // S_MSG_SUCCESS
     _T("Operation failed."),                    // S_MSG_FAILED
+    _T("Terminated %u/%u selected process(es)."), // S_MSG_KILL_SUMMARY
     _T("This operation requires Administrator privilege."), // S_MSG_ADMIN_REQ
     _T("Shell context menu registered."),       // S_MSG_SHELL_REGISTERED
     _T("Shell context menu removed."),          // S_MSG_SHELL_UNREGISTERED
@@ -124,7 +129,7 @@ static LPCTSTR g_StrsEN[S_LAST] =
     _T("Unlock / Unload Module"),               // S_MENU_UNLOCK
     _T("Delete File"),                          // S_MENU_DELETE
     _T("Details..."),                           // S_MENU_DETAILS
-    _T("Please select a process first."),       // S_MSG_NONE_SELECTED
+    _T("Please select at least one process."),  // S_MSG_NONE_SELECTED
     _T("File will be deleted on next reboot."), // S_MSG_DELETE_PENDING_REBOOT
 };
 
@@ -152,9 +157,11 @@ static LPCTSTR g_StrsZH[S_LAST] =
     _T("检测到 %d 个进程持有目标。"),
     _T("未检测到占用进程。"),
     _T("确认结束进程 %s（PID %u）？"),
+    _T("确认结束选中的 %u 个进程？"),
     _T("确认删除被占用的文件/文件夹 %s？"),
     _T("操作成功。"),
     _T("操作失败。"),
+    _T("已结束 %u/%u 个选中进程。"),
     _T("本操作需要管理员权限。"),
     _T("已注册右键菜单。"),
     _T("已撤销右键菜单。"),
@@ -169,7 +176,7 @@ static LPCTSTR g_StrsZH[S_LAST] =
     _T("解除占用/卸载模块"),
     _T("删除文件"),
     _T("详细信息..."),
-    _T("请先选中一个进程。"),
+    _T("请先选中至少一个进程。"),
     _T("文件将在下次重启时删除。"),
 };
 
@@ -519,6 +526,14 @@ void CMainDlg::PopulateListView(const LockInfoArray& arrLocks)
         m_ListProcesses.SetItemText(nItem, 3, info.strLockedFile);
         m_ListProcesses.SetItemText(nItem, 4, info.strLockType);
     }
+
+    if (!arrLocks.empty())
+    {
+        // 结果出来后默认选中第一项，减少重复点击成本。
+        m_ListProcesses.SetItemState(0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+        m_ListProcesses.EnsureVisible(0, FALSE);
+    }
+
     m_ListProcesses.SetRedraw(TRUE);
     m_ListProcesses.Invalidate();
 }
@@ -531,6 +546,30 @@ bool CMainDlg::GetSelectedProcess(ProcessLockInfo& outInfo)
     if (nSel < 0 || nSel >= (int)m_arrLocks.size()) return false;
     outInfo = m_arrLocks[(size_t)nSel];
     return true;
+}
+
+bool CMainDlg::GetSelectedProcesses(std::vector<ProcessLockInfo>& outInfos, bool bUniquePid)
+{
+    outInfos.clear();
+
+    POSITION pos = m_ListProcesses.GetFirstSelectedItemPosition();
+    if (!pos) return false;
+
+    std::set<DWORD> seenPids;
+    while (pos)
+    {
+        int nSel = m_ListProcesses.GetNextSelectedItem(pos);
+        if (nSel < 0 || nSel >= (int)m_arrLocks.size())
+            continue;
+
+        const ProcessLockInfo& info = m_arrLocks[(size_t)nSel];
+        if (bUniquePid && !seenPids.insert(info.dwPID).second)
+            continue;
+
+        outInfos.push_back(info);
+    }
+
+    return !outInfos.empty();
 }
 
 void CMainDlg::SetStatus(LPCTSTR lpszFormat, ...)
@@ -830,22 +869,42 @@ void CMainDlg::PerformAnalysis()
 
 void CMainDlg::OnBnClickedKillProcess()
 {
-    ProcessLockInfo info;
-    if (!GetSelectedProcess(info)) { MessageBox(Str(S_MSG_NONE_SELECTED), Str(S_TITLE), MB_ICONWARNING); return; }
+    std::vector<ProcessLockInfo> arrSelected;
+    if (!GetSelectedProcesses(arrSelected, true)) { MessageBox(Str(S_MSG_NONE_SELECTED), Str(S_TITLE), MB_ICONWARNING); return; }
+
     CString s;
-    s.Format(Str(S_MSG_CONFIRM_KILL), info.strProcessName, info.dwPID);
-    if (IDYES != MessageBox(s, Str(S_TITLE), MB_ICONQUESTION | MB_YESNO)) return;
-    if (m_Detector.KillProcess(info.dwPID))
-    {
-        SetStatus(_T("%s [%s PID=%u]"), Str(S_MSG_SUCCESS), info.strProcessName, info.dwPID);
-        PerformAnalysis();
-    }
+    if (arrSelected.size() == 1)
+        s.Format(Str(S_MSG_CONFIRM_KILL), arrSelected[0].strProcessName, arrSelected[0].dwPID);
     else
+        s.Format(Str(S_MSG_CONFIRM_KILL_MULTI), (UINT)arrSelected.size());
+    if (IDYES != MessageBox(s, Str(S_TITLE), MB_ICONQUESTION | MB_YESNO)) return;
+
+    UINT nSuccess = 0;
+    for (size_t i = 0; i < arrSelected.size(); ++i)
     {
-        if (!IsRunningAsAdmin() && IDYES == MessageBox(CString(Str(S_MSG_ADMIN_REQ)) + _T("\n") + Str(S_MSG_CONFIRM_ELEVATE), Str(S_TITLE), MB_ICONQUESTION | MB_YESNO))
-            RelaunchAsAdmin();
+        if (m_Detector.KillProcess(arrSelected[i].dwPID))
+            ++nSuccess;
+    }
+
+    if (nSuccess > 0)
+    {
+        if (arrSelected.size() == 1)
+            SetStatus(_T("%s [%s PID=%u]"), Str(S_MSG_SUCCESS), arrSelected[0].strProcessName, arrSelected[0].dwPID);
         else
-            MessageBox(Str(S_MSG_FAILED), Str(S_TITLE), MB_ICONERROR);
+            SetStatus(Str(S_MSG_KILL_SUMMARY), nSuccess, (UINT)arrSelected.size());
+
+        PerformAnalysis();
+        if (nSuccess == arrSelected.size())
+            return;
+    }
+
+    if (!IsRunningAsAdmin() && IDYES == MessageBox(CString(Str(S_MSG_ADMIN_REQ)) + _T("\n") + Str(S_MSG_CONFIRM_ELEVATE), Str(S_TITLE), MB_ICONQUESTION | MB_YESNO))
+    {
+        RelaunchAsAdmin();
+    }
+    else if (nSuccess == 0)
+    {
+        MessageBox(Str(S_MSG_FAILED), Str(S_TITLE), MB_ICONERROR);
     }
 }
 

@@ -101,6 +101,7 @@ public:
     void ClearListView();
     void PerformAnalysis();
     bool GetSelectedProcess(ProcessLockInfo& outInfo);
+    bool GetSelectedProcesses(std::vector<ProcessLockInfo>& outInfos, bool bUniquePid = true);
     void ShowProcessDetails(const ProcessLockInfo& info);
     void SetStatus(LPCTSTR lpszFormat, ...);
     void AppendStatus(LPCTSTR lpszText);
