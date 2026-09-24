@@ -1,0 +1,93 @@
+name: MSBuild CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+  pull_request:
+    branches: [ "main", "master" ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+  workflow_dispatch:
+
+env:
+  SOLUTION_FILE_PATH: .
+  BUILD_PLATFORM: x64
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
+        platform: [Win32, x64]
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v2
+
+    - name: Restore NuGet packages
+      working-directory: ${{env.SOLUTION_FILE_PATH}}
+      run: nuget restore FileLockAnalyzer.sln
+
+    - name: Build ${{ matrix.configuration }} ${{ matrix.platform }}
+      working-directory: ${{env.SOLUTION_FILE_PATH}}
+      shell: cmd
+      run: >
+        msbuild FileLockAnalyzer.sln
+        /p:Configuration="${{ matrix.configuration }}"
+        /p:Platform="${{ matrix.platform }}"
+        /p:PreferredToolArchitecture=x64
+        /m
+        /nologo
+        /verbosity:minimal
+        /p:DeployOnBuild=false
+        /p:PackageAsSingleFile=false
+        /p:SkipInvalidConfigurations=true
+        /p:TrackFileAccess=false
+        /p:BuildInParallel=true
+
+    - name: Prepare build artifacts
+      if: success()
+      shell: powershell
+      run: |
+        $platformDir = if ("${{ matrix.platform }}" -eq "Win32") { "x86" } else { "x64" }
+        $sourceDir = ".\$platformDir\${{ matrix.configuration }}\"
+        $targetDir = ".\artifacts\${{ matrix.configuration }}_${{ matrix.platform }}\"
+        
+        if (Test-Path $sourceDir) {
+          New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+          
+          Get-ChildItem -Path $sourceDir -Include *.exe,*.dll,*.pdb -Recurse | 
+            ForEach-Object { Copy-Item $_.FullName -Destination $targetDir -Force }
+          
+          Write-Host "Artifacts copied from $sourceDir to $targetDir"
+          Get-ChildItem -Path $targetDir | ForEach-Object { Write-Host "  - $($_.Name) ($([math]::Round($_.Length / 1KB, 2)) KB)" }
+        } else {
+          Write-Warning "Source directory not found: $sourceDir"
+        }
+
+    - name: Upload build artifacts
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: FileLockAnalyzer_${{ matrix.configuration }}_${{ matrix.platform }}
+        path: .\artifacts\${{ matrix.configuration }}_${{ matrix.platform }}\
+        retention-days: 30
+        if-no-files-found: warn
