@@ -19,7 +19,6 @@ on:
 
 env:
   SOLUTION_FILE_PATH: .
-  BUILD_PLATFORM: x64
 
 jobs:
   build:
@@ -38,6 +37,8 @@ jobs:
 
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
+      with:
+        msbuild-architecture: x64
 
     - name: Setup NuGet
       uses: NuGet/setup-nuget@v2
@@ -48,39 +49,54 @@ jobs:
 
     - name: Build ${{ matrix.configuration }} ${{ matrix.platform }}
       working-directory: ${{env.SOLUTION_FILE_PATH}}
-      shell: cmd
-      run: >
-        msbuild FileLockAnalyzer.sln
-        /p:Configuration="${{ matrix.configuration }}"
-        /p:Platform="${{ matrix.platform }}"
-        /p:PreferredToolArchitecture=x64
-        /m
-        /nologo
-        /verbosity:minimal
-        /p:DeployOnBuild=false
-        /p:PackageAsSingleFile=false
-        /p:SkipInvalidConfigurations=true
-        /p:TrackFileAccess=false
-        /p:BuildInParallel=true
+      shell: pwsh
+      run: |
+        $msbuildArgs = @(
+          "FileLockAnalyzer.sln",
+          "/p:Configuration=`"${{ matrix.configuration }}`"",
+          "/p:Platform=`"${{ matrix.platform }}`"",
+          "/p:PreferredToolArchitecture=x64",
+          "/p:PlatformToolset=v143",
+          "/p:WindowsTargetPlatformVersion=10.0",
+          "/m",
+          "/nologo",
+          "/verbosity:normal",
+          "/p:DeployOnBuild=false",
+          "/p:PackageAsSingleFile=false",
+          "/p:SkipInvalidConfigurations=true",
+          "/p:TrackFileAccess=false",
+          "/p:BuildInParallel=true",
+          "/p:UseOfMfc=Dynamic",
+          "/p:CharacterSet=Unicode",
+          "/consoleloggerparameters:Summary"
+        )
+        Write-Host "Executing: msbuild $($msbuildArgs -join ' ')"
+        & msbuild @msbuildArgs
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "##[error]MSBuild failed with exit code $LASTEXITCODE"
+          exit $LASTEXITCODE
+        }
 
     - name: Prepare build artifacts
       if: success()
-      shell: powershell
+      shell: pwsh
       run: |
         $platformDir = if ("${{ matrix.platform }}" -eq "Win32") { "x86" } else { "x64" }
         $sourceDir = ".\$platformDir\${{ matrix.configuration }}\"
         $targetDir = ".\artifacts\${{ matrix.configuration }}_${{ matrix.platform }}\"
-        
+
         if (Test-Path $sourceDir) {
           New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
-          
-          Get-ChildItem -Path $sourceDir -Include *.exe,*.dll,*.pdb -Recurse | 
+
+          Get-ChildItem -Path $sourceDir -Include *.exe,*.dll,*.pdb -Recurse |
             ForEach-Object { Copy-Item $_.FullName -Destination $targetDir -Force }
-          
+
           Write-Host "Artifacts copied from $sourceDir to $targetDir"
           Get-ChildItem -Path $targetDir | ForEach-Object { Write-Host "  - $($_.Name) ($([math]::Round($_.Length / 1KB, 2)) KB)" }
         } else {
           Write-Warning "Source directory not found: $sourceDir"
+          Write-Host "Listing current directory structure:"
+          Get-ChildItem -Recurse -Depth 2 | Select-Object FullName | Out-Host
         }
 
     - name: Upload build artifacts
