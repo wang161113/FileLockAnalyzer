@@ -432,6 +432,13 @@ LPCTSTR CMainDlg::T(LPCTSTR lpszEN, LPCTSTR lpszZH)
     return (m_eLang == LANG_ZH) ? lpszZH : lpszEN;
 }
 
+CString CMainDlg::GetCopyrightText() const
+{
+    if (m_eLang == LANG_ZH)
+        return _T("版权所有 © Finn Wang | 定制开发微信：FinnSoft");
+    return _T("Copyright © Finn Wang | WeChat: FinnSoft");
+}
+
 void CMainDlg::ApplyLanguage()
 {
     SetWindowText(Str(S_TITLE));
@@ -451,6 +458,7 @@ void CMainDlg::ApplyLanguage()
     SetDlgItemText(IDC_BUTTON_REFRESH, Str(S_BTN_REFRESH));
     SetDlgItemText(IDC_BUTTON_REGISTER_SHELL, Str(S_BTN_REG_SHELL));
     SetDlgItemText(IDC_BUTTON_UNREGISTER_SHELL, Str(S_BTN_UNREG_SHELL));
+    SetDlgItemText(IDC_STATIC_COPYRIGHT, GetCopyrightText());
 
     m_ListProcesses.SetRedraw(FALSE);
     VERIFY(m_ListProcesses.DeleteColumn(4));
@@ -629,6 +637,7 @@ void CMainDlg::BuildAnchorList()
     AddAnchorCtrl(IDC_BUTTON_UNREGISTER_SHELL,ANCHOR_BOTTOMLEFT);
 
     AddAnchorCtrl(IDC_STATIC_STATUS,         ANCHOR_BOTTOMWIDTH);
+    AddAnchorCtrl(IDC_STATIC_COPYRIGHT,      ANCHOR_BOTTOMRIGHT);
 
     m_bAnchorsReady = TRUE;
 }

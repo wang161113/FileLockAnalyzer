@@ -25,6 +25,7 @@
 #define IDC_GROUP_RESULT                1016
 #define IDC_GROUP_UTILITY               1017
 #define IDC_STATIC_PATH_LABEL           1018
+#define IDC_STATIC_COPYRIGHT            1019
 
 #define WM_TRAYNOTIFY                   (WM_USER + 101)
 #define ID_TRAY_EXIT                     2001

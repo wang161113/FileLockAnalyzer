@@ -116,6 +116,7 @@ public:
     void ApplyLanguage();
     LPCTSTR Str(int nResId);
     LPCTSTR T(LPCTSTR lpszEN, LPCTSTR lpszZH);
+    CString GetCopyrightText() const;
 
     bool RegisterShellMenu();
     bool UnregisterShellMenu();
