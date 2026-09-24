@@ -19,6 +19,7 @@ on:
 
 env:
   SOLUTION_FILE_PATH: .
+  ARTIFACT_DIR: artifact-staging
 
 jobs:
   build:
@@ -51,16 +52,23 @@ jobs:
       working-directory: ${{env.SOLUTION_FILE_PATH}}
       shell: pwsh
       run: |
+        $artifactDir = Join-Path (Resolve-Path .) $env:ARTIFACT_DIR
+        $outDir = Join-Path $artifactDir "${{ matrix.configuration }}_${{ matrix.platform }}"
+        New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+
         $msbuildArgs = @(
           "FileLockAnalyzer.sln",
+          "/t:Restore;Build",
           "/p:Configuration=`"${{ matrix.configuration }}`"",
           "/p:Platform=`"${{ matrix.platform }}`"",
           "/p:PreferredToolArchitecture=x64",
           "/p:PlatformToolset=v143",
           "/p:WindowsTargetPlatformVersion=10.0",
+          "/p:OutDir=`"$($outDir.TrimEnd('\'))\`"",
+          "/p:IntermediateOutputPath=`"$(Join-Path $artifactDir 'obj' "${{ matrix.configuration }}_${{ matrix.platform }}")\`"",
           "/m",
           "/nologo",
-          "/verbosity:normal",
+          "/verbosity:minimal",
           "/p:DeployOnBuild=false",
           "/p:PackageAsSingleFile=false",
           "/p:SkipInvalidConfigurations=true",
@@ -68,7 +76,7 @@ jobs:
           "/p:BuildInParallel=true",
           "/p:UseOfMfc=Dynamic",
           "/p:CharacterSet=Unicode",
-          "/consoleloggerparameters:Summary"
+          "/consoleloggerparameters:Summary;ErrorsOnly;WarningsOnly"
         )
         Write-Host "Executing: msbuild $($msbuildArgs -join ' ')"
         & msbuild @msbuildArgs
@@ -77,26 +85,14 @@ jobs:
           exit $LASTEXITCODE
         }
 
-    - name: Prepare build artifacts
-      if: success()
-      shell: pwsh
-      run: |
-        $platformDir = if ("${{ matrix.platform }}" -eq "Win32") { "x86" } else { "x64" }
-        $sourceDir = ".\$platformDir\${{ matrix.configuration }}\"
-        $targetDir = ".\artifacts\${{ matrix.configuration }}_${{ matrix.platform }}\"
-
-        if (Test-Path $sourceDir) {
-          New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
-
-          Get-ChildItem -Path $sourceDir -Include *.exe,*.dll,*.pdb -Recurse |
-            ForEach-Object { Copy-Item $_.FullName -Destination $targetDir -Force }
-
-          Write-Host "Artifacts copied from $sourceDir to $targetDir"
-          Get-ChildItem -Path $targetDir | ForEach-Object { Write-Host "  - $($_.Name) ($([math]::Round($_.Length / 1KB, 2)) KB)" }
-        } else {
-          Write-Warning "Source directory not found: $sourceDir"
-          Write-Host "Listing current directory structure:"
-          Get-ChildItem -Recurse -Depth 2 | Select-Object FullName | Out-Host
+        Write-Host "=== Build outputs in $outDir ==="
+        Get-ChildItem -Path $outDir -File | ForEach-Object {
+          Write-Host "  $($_.Name)  $([math]::Round($_.Length / 1KB, 2)) KB"
+        }
+        $exes = Get-ChildItem -Path $outDir -Filter *.exe
+        if (-not $exes) {
+          Write-Host "##[warning]No .exe found in output directory. Dumping full tree:"
+          Get-ChildItem -Recurse $artifactDir -Depth 4 | Select-Object FullName,Length | Out-Host
         }
 
     - name: Upload build artifacts
@@ -104,6 +100,9 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: FileLockAnalyzer_${{ matrix.configuration }}_${{ matrix.platform }}
-        path: .\artifacts\${{ matrix.configuration }}_${{ matrix.platform }}\
+        path: |
+          ${{ env.ARTIFACT_DIR }}/${{ matrix.configuration }}_${{ matrix.platform }}/*.exe
+          ${{ env.ARTIFACT_DIR }}/${{ matrix.configuration }}_${{ matrix.platform }}/*.dll
+          ${{ env.ARTIFACT_DIR }}/${{ matrix.configuration }}_${{ matrix.platform }}/*.pdb
         retention-days: 30
-        if-no-files-found: warn
+        if-no-files-found: error
