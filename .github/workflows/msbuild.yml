@@ -56,91 +56,60 @@ jobs:
         $config     = "${{ matrix.configuration }}"
 
         $repoRoot   = (Resolve-Path .).Path.TrimEnd('\')
-        $outDir     = "$repoRoot\bin\$platDir\$config\"
-        $intDir     = "$repoRoot\obj\$platDir\$config\"
 
-        New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-        New-Item -ItemType Directory -Force -Path $intDir | Out-Null
-
-        $logDir     = "$repoRoot\_logs"
-        $null = New-Item -ItemType Directory -Force -Path $logDir
-        $binLog     = Join-Path $logDir "msbuild_$platDir_$config.binlog"
-        $errLog     = Join-Path $logDir "msbuild_$platDir_$config.err.log"
-
-        # ---------- MSBuild command line (matches Run #2 SUCCESS params, plus Explicit OutDir) ----------
-        $msbuildArgs = @(
-          "FileLockAnalyzer.sln",
-          "/t:Build",
-          "/p:Configuration=`"$config`"",
-          "/p:Platform=`"$arch`"",
-          "/p:PlatformToolset=v143",
-          "/p:PreferredToolArchitecture=x64",
-          "/p:WindowsTargetPlatformVersion=10.0",
-          "/p:OutDir=`"$outDir`"",
-          "/p:IntDir=`"$intDir`"",
-          "/p:UseOfMfc=Dynamic",
-          "/p:CharacterSet=Unicode",
-          "/p:BuildInParallel=true",
-          "/p:TrackFileAccess=false",
-          "/p:SkipInvalidConfigurations=true",
-          "/maxcpucount",
-          "/nologo",
-          "/verbosity:normal",
-          "/bl:`"$binLog`"",
-          "/err:`"$errLog`"",
-          "/fileloggerparameters:Verbosity=diagnostic;LogFile=`"$(Join-Path $logDir "msbuild_$platDir_$config.diag.log")`""
-        )
+        # ---------- MSBuild command line matches Run #2 success exactly: no OutDir/IntDir override, no binlog, no fancy filters ----------
+        $cmd = @(
+          "& msbuild FileLockAnalyzer.sln /t:Build"
+          " /p:Configuration=`"$config`""
+          " /p:Platform=`"$arch`""
+          " /p:PlatformToolset=v143 /p:PreferredToolArchitecture=x64 /p:WindowsTargetPlatformVersion=10.0"
+          " /p:UseOfMfc=Dynamic /p:CharacterSet=Unicode"
+          " /p:BuildInParallel=true /p:TrackFileAccess=false /p:SkipInvalidConfigurations=true"
+          " /maxcpucount /nologo /verbosity:normal"
+        ) -join ""
 
         Write-Host "::group::MSBuild invokation"
-        Write-Host  "msbuild $($msbuildArgs -join ' ')"
+        Write-Host  $cmd
         Write-Host "::endgroup::"
 
-        & msbuild @msbuildArgs
+        $stdout = iex $cmd 2>&1 | Out-String
         $exitCode = $LASTEXITCODE
 
-        # ---------- Diagnose: dump error log tail + top 20 cl/link error lines from diag log ----------
+        # ---------- Diagnose: scan stdout for error patterns, print summary + last 40 lines on failure ----------
         Write-Host "::group::Build result"
         Write-Host  "Exit code    : $exitCode"
-        Write-Host  "OutDir       : $outDir"
-        Write-Host  "IntDir       : $intDir"
-        Write-Host  "BinLog       : $binLog"
-        Write-Host  "ErrLog       : $errLog"
         if ($exitCode -ne 0) {
-          Write-Host  "------ stderr (tail) ------"
-          if (Test-Path -LiteralPath $errLog) {
-            [string[]]$lines = [System.IO.File]::ReadAllLines($errLog)
-            $start = [Math]::Max(0, $lines.Count - 50)
-            for ($i = $start; $i -lt $lines.Count; $i++) { Write-Host ("  {0}" -f $lines[$i]) }
-          } else { Write-Host "  (no error log file)" }
-          Write-Host  "------ MSBuild stdout errors (search) ------"
-          if (Test-Path -LiteralPath $logDir) {
-            foreach ($f in [System.IO.Directory]::GetFiles($logDir, "*.log")) {
-              [string[]]$all = [System.IO.File]::ReadAllLines($f)
-              $n = 0
-              foreach ($l in $all) {
-                if ($l -match '(?i)error\s*[A-Z]{2,}\d+' -or $l -match '(?i): error ') {
-                  Write-Host ("  ERR> {0}" -f $l)
-                  $n++
-                  if ($n -ge 30) { break }
-                }
-              }
-              if ($n -gt 0) { break }
-            }
+          $lines = ($stdout -split "`r?`n")
+          $matches = @()
+          foreach ($l in $lines) {
+            if ($l -match '(?i)\b(error\s*[A-Z]{2,}\d+|: error )') { $matches += $l }
           }
+          Write-Host  "------ error lines ($($matches.Count)) ------"
+          $n = 0
+          foreach ($m in $matches) { Write-Host "  ERR> $m"; $n++; if ($n -ge 40) { break } }
+          Write-Host  "------ tail 40 ------"
+          $start = [Math]::Max(0, $lines.Count - 40)
+          for ($i = $start; $i -lt $lines.Count; $i++) { Write-Host ("  L{0,-4} {1}" -f ($i+1), $lines[$i]) }
+        } else {
+          $lines = ($stdout -split "`r?`n")
+          Write-Host  "Build summary : $($lines.Count) lines"
         }
 
-        # ---------- Find final EXE ----------
+        # ---------- Find final EXE (vcxproj default: $(Platform)\$(Configuration)\) ----------
         $exe = $null
-        if (Test-Path -LiteralPath $outDir) {
-          $candidates = [System.IO.Directory]::GetFiles($outDir, "*.exe")
-          if ($candidates -and $candidates.Count -gt 0) { $exe = $candidates[0] }
+        $candidates = @(
+          "$repoRoot\x64\$config\FileLockAnalyzer.exe",
+          "$repoRoot\$platDir\$config\FileLockAnalyzer.exe",
+          "$repoRoot\$arch\$config\FileLockAnalyzer.exe",
+          "$repoRoot\Debug\FileLockAnalyzer.exe",
+          "$repoRoot\Release\FileLockAnalyzer.exe"
+        )
+        foreach ($c in $candidates) {
+          if ([System.IO.File]::Exists($c)) { $exe = $c; break }
         }
         if (-not $exe) {
-          Write-Host "  [warn] EXE not in explicit OutDir. Falling back to recursive search..."
           $all = [System.IO.Directory]::GetFiles($repoRoot, "FileLockAnalyzer.exe", [System.IO.SearchOption]::AllDirectories)
-          foreach ($c in $all) {
-            if ($c -notmatch '\\obj\\') { $exe = $c; break }
-          }
+          foreach ($c in $all) { if ($c -notmatch '\\obj\\') { $exe = $c; break } }
         }
         if ($exe) {
           $fi = [System.IO.FileInfo]$exe
@@ -161,27 +130,15 @@ jobs:
         "OUTDIR_FOUND=$OUTDIR_FOUND" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
         if ($exitCode -ne 0) {
-          "MSBUILD_FAILED=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "::error::MSBuild exited with code $exitCode"
+          exit $exitCode
         }
-        if (-not $exe -and $exitCode -eq 0) {
+        if (-not $exe) {
           Write-Host "::error::MSBuild exited 0 but FileLockAnalyzer.exe was not produced."
           exit 1
         }
 
-    - name: Upload MSBuild diagnostic logs (always)
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: msbuild-diagnostics-${{ matrix.configuration }}-${{ matrix.platform }}
-        path: |
-          _logs/
-        compression-level: 6
-        retention-days: 7
-        if-no-files-found: ignore
-
     - name: Stage artifacts
-      if: success() && env.MSBUILD_FAILED != '1'
       shell: pwsh
       run: |
         $ErrorActionPreference = 'Stop'
