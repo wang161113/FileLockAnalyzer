@@ -17,11 +17,9 @@ on:
       - '.gitignore'
   workflow_dispatch:
 
-env:
-  SOLUTION_FILE_PATH: .
-
 jobs:
   build:
+    name: build (${{ matrix.configuration }}, ${{ matrix.platform }})
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -30,136 +28,147 @@ jobs:
         platform: [Win32, x64]
 
     steps:
-    - name: Checkout
+    - name: Checkout repository
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
 
-    - name: Add MSBuild to PATH
+    - name: Setup MSBuild (VS 2022 / v143)
       uses: microsoft/setup-msbuild@v2
       with:
         msbuild-architecture: x64
+        vs-prerelease: false
 
     - name: Setup NuGet
-      uses: NuGet/setup-nuget@v2
+      uses: NuGet/setup-nuget@v2.0.0
 
-    - name: Restore NuGet packages
-      working-directory: ${{env.SOLUTION_FILE_PATH}}
+    - name: Restore solution packages
+      working-directory: .
+      run: nuget restore FileLockAnalyzer.sln -NonInteractive -Verbosity quiet
+
+    - name: Build project
+      id: build
+      working-directory: .
       shell: pwsh
       run: |
-        $ErrorActionPreference = 'Stop'
-        nuget restore FileLockAnalyzer.sln
-        if ($LASTEXITCODE -ne 0) {
-          Write-Host "::error::nuget restore failed with exit code $LASTEXITCODE"
-          exit $LASTEXITCODE
-        }
+        $ErrorActionPreference = 'Continue'
 
-    - name: Build ${{ matrix.configuration }} ${{ matrix.platform }}
-      working-directory: ${{env.SOLUTION_FILE_PATH}}
-      shell: pwsh
-      run: |
-        $ErrorActionPreference = 'Stop'
+        $arch       = if ("${{ matrix.platform }}" -eq "x64")   { "x64" }   else { "Win32" }
+        $platDir    = if ("${{ matrix.platform }}" -eq "x64")   { "x64" }   else { "x86" }
+        $config     = "${{ matrix.configuration }}"
 
+        $repoRoot   = (Resolve-Path .).Path.TrimEnd('\')
+        $outDir     = "$repoRoot\bin\$platDir\$config\"
+        $intDir     = "$repoRoot\obj\$platDir\$config\"
+
+        New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+        New-Item -ItemType Directory -Force -Path $intDir | Out-Null
+
+        # ---------- MSBuild command line (matches Run #2 SUCCESS params, plus Explicit OutDir) ----------
         $msbuildArgs = @(
-          "FileLockAnalyzer.sln",
-          "/p:Configuration=`"${{ matrix.configuration }}`"",
-          "/p:Platform=`"${{ matrix.platform }}`"",
-          "/p:PreferredToolArchitecture=x64",
+          "FileLockAnalyzer.vcxproj",
+          "/t:Build",
+          "/p:Configuration=`"$config`"",
+          "/p:Platform=`"$arch`"",
           "/p:PlatformToolset=v143",
+          "/p:PreferredToolArchitecture=x64",
           "/p:WindowsTargetPlatformVersion=10.0",
-          "/m",
-          "/nologo",
-          "/verbosity:minimal",
-          "/p:DeployOnBuild=false",
-          "/p:PackageAsSingleFile=false",
-          "/p:SkipInvalidConfigurations=true",
-          "/p:TrackFileAccess=false",
-          "/p:BuildInParallel=true",
+          "/p:OutDir=`"$outDir`"",
+          "/p:IntDir=`"$intDir`"",
           "/p:UseOfMfc=Dynamic",
           "/p:CharacterSet=Unicode",
-          "/consoleloggerparameters:Summary;ErrorsOnly"
+          "/p:BuildInParallel=true",
+          "/p:TrackFileAccess=false",
+          "/p:SkipInvalidConfigurations=true",
+          "/maxcpucount",
+          "/nologo",
+          "/verbosity:minimal",
+          "/consoleloggerparameters:ErrorsOnly;Summary;NoItemAndPropertyList"
         )
-        $cmdLine = "msbuild " + ($msbuildArgs -join ' ')
-        Write-Host "::debug::MSBuild command: $cmdLine"
+
+        Write-Host "::group::MSBuild invokation"
+        Write-Host  "msbuild $($msbuildArgs -join ' ')"
+        Write-Host "::endgroup::"
+
         & msbuild @msbuildArgs
-        $msbuildExit = $LASTEXITCODE
+        $exitCode = $LASTEXITCODE
 
-        $root = Resolve-Path .
-        $platformDirs = if ("${{ matrix.platform }}" -eq "Win32") { @("x86", "Win32") } else { @("x64") }
-        $foundDirs = @()
-        foreach ($pd in $platformDirs) {
-          $candidate = Join-Path $root $pd "${{ matrix.configuration }}"
-          if (Test-Path -LiteralPath $candidate) {
-            $exes = [System.IO.Directory]::GetFiles($candidate, "*.exe")
-            if ($exes.Count -gt 0) { $foundDirs += $candidate }
+        Write-Host "::group::Build result"
+        Write-Host  "Exit code    : $exitCode"
+        Write-Host  "OutDir       : $outDir"
+        Write-Host  "IntDir       : $intDir"
+
+        # ---------- Find final EXE ----------
+        $exe = $null
+        if (Test-Path -LiteralPath $outDir) {
+          $candidates = [System.IO.Directory]::GetFiles($outDir, "*.exe")
+          if ($candidates -and $candidates.Count -gt 0) { $exe = $candidates[0] }
+        }
+        if (-not $exe) {
+          Write-Host "  [warn] EXE not in explicit OutDir. Falling back to recursive search..."
+          $all = [System.IO.Directory]::GetFiles($repoRoot, "FileLockAnalyzer.exe", [System.IO.SearchOption]::AllDirectories)
+          foreach ($c in $all) {
+            if ($c -notmatch '\\obj\\') { $exe = $c; break }
           }
         }
-        if ($foundDirs.Count -eq 0) {
-          $allExes = [System.IO.Directory]::GetFiles("$root", "FileLockAnalyzer.exe", [System.IO.SearchOption]::AllDirectories)
-          foreach ($e in $allExes) {
-            if ($e -notmatch [regex]::Escape('\obj\')) {
-              $d = [System.IO.Path]::GetDirectoryName($e)
-              if ($foundDirs -notcontains $d) { $foundDirs += $d }
-            }
+        if ($exe) {
+          $fi = [System.IO.FileInfo]$exe
+          Write-Host  "Target EXE   : $($fi.FullName)"
+          Write-Host  "EXE size     : $([math]::Round($fi.Length / 1KB, 2)) KB"
+        } else {
+          Write-Host  "Target EXE   : (not found)"
+          # Print top-level dirs for debugging
+          foreach ($d in [System.IO.Directory]::GetDirectories($repoRoot)) {
+            $dn = [System.IO.Path]::GetFileName($d.TrimEnd('\'))
+            Write-Host "  [repo dir] $dn"
           }
         }
-        if ($foundDirs.Count -eq 0) {
-          Write-Host "::warning::No FileLockAnalyzer.exe found anywhere. Listing top-level directories for diagnosis:"
-          foreach ($d in [System.IO.Directory]::GetDirectories("$root")) {
-            $name = [System.IO.Path]::GetFileName($d.TrimEnd('\'))
-            Write-Host "  D  $name"
-          }
-        }
+        Write-Host "::endgroup::"
 
-        $OUTPUT_DIRS = if ($foundDirs.Count) { $foundDirs -join '|' } else { '' }
-        Add-Content -Path $env:GITHUB_ENV -Value "OUTPUT_DIRS=$OUTPUT_DIRS" -Encoding utf8
-        Write-Host "::notice::OUTPUT_DIRS=$OUTPUT_DIRS"
+        # ---------- Export via GITHUB_OUTPUT / GITHUB_ENV ----------
+        $OUTDIR_FOUND = if ($exe) { [System.IO.Path]::GetDirectoryName($exe) } else { '' }
+        "OUTDIR_FOUND=$OUTDIR_FOUND" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-        if ($msbuildExit -ne 0) {
-          Write-Host "::error::MSBuild failed with exit code $msbuildExit"
-          exit $msbuildExit
+        if ($exitCode -ne 0) {
+          Write-Host "::error::MSBuild exited with code $exitCode"
+          exit $exitCode
         }
-        if ($foundDirs.Count -eq 0) {
-          Write-Host "::error::MSBuild reported success but no .exe was produced."
+        if (-not $exe) {
+          Write-Host "::error::MSBuild exited 0 but FileLockAnalyzer.exe was not produced."
           exit 1
         }
 
-    - name: Prepare build artifacts
+    - name: Stage artifacts
       if: success()
-      working-directory: ${{env.SOLUTION_FILE_PATH}}
       shell: pwsh
       run: |
         $ErrorActionPreference = 'Stop'
-        $root = Resolve-Path .
-        $staging = Join-Path $root "_staging" "${{ matrix.configuration }}_${{ matrix.platform }}"
-        $null = New-Item -ItemType Directory -Force -Path $staging
-
-        $dirs = if ($env:OUTPUT_DIRS) { $env:OUTPUT_DIRS -split '\|' } else { @() }
-        $seen = @{}
-        foreach ($dir in $dirs) {
-          if (-not (Test-Path -LiteralPath $dir)) { continue }
-          foreach ($ext in @("*.exe", "*.dll", "*.pdb")) {
-            foreach ($file in [System.IO.Directory]::GetFiles($dir, $ext)) {
-              $name = [System.IO.Path]::GetFileName($file)
-              if (-not $seen.ContainsKey($name)) {
-                $dest = Join-Path $staging $name
-                [System.IO.File]::Copy($file, $dest, $true)
-                $size = [math]::Round(([System.IO.FileInfo]$file).Length / 1KB, 2)
-                Write-Host "  $name  $size KB"
-                $seen[$name] = $true
-              }
-            }
+        $repoRoot = (Resolve-Path .).Path.TrimEnd('\')
+        $src      = $env:OUTDIR_FOUND
+        $staging  = "$repoRoot\_publish\${{ matrix.configuration }}_${{ matrix.platform }}"
+        $null     = New-Item -ItemType Directory -Force -Path $staging
+        $seen     = @{}
+        if ([string]::IsNullOrWhiteSpace($src) -or -not (Test-Path -LiteralPath $src)) {
+          Write-Host "::warning::OUTDIR_FOUND empty. Nothing to stage."
+          exit 0
+        }
+        foreach ($pattern in @("*.exe","*.dll","*.pdb")) {
+          foreach ($f in [System.IO.Directory]::GetFiles($src, $pattern)) {
+            $name = [System.IO.Path]::GetFileName($f)
+            if ($seen.ContainsKey($name)) { continue }
+            $dest = Join-Path $staging $name
+            [System.IO.File]::Copy($f, $dest, $true)
+            $size = [math]::Round(([System.IO.FileInfo]$f).Length / 1KB, 2)
+            Write-Host "  $name  $size KB"
+            $seen[$name] = $true
           }
         }
-        if ($seen.Count -eq 0) {
-          Write-Host "::warning::No artifacts were copied to staging."
-        }
+        if ($seen.Count -eq 0) { Write-Host "  (no files staged)" }
 
-    - name: Upload build artifacts
+    - name: Upload artifacts
       if: success()
       uses: actions/upload-artifact@v4
       with:
         name: FileLockAnalyzer_${{ matrix.configuration }}_${{ matrix.platform }}
-        path: _staging/${{ matrix.configuration }}_${{ matrix.platform }}/
+        path: _publish/${{ matrix.configuration }}_${{ matrix.platform }}/
         retention-days: 30
+        compression-level: 6
         if-no-files-found: warn
