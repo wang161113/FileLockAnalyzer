@@ -60,24 +60,31 @@ jobs:
         $null       = New-Item -ItemType Directory -Force -Path $logDir
         $buildLog   = Join-Path $logDir "msbuild_${platDir}_${config}.log"
 
-        # Keep runner logs small: redirect full MSBuild output to file, then print only filtered diagnostics.
-        $cmd = @(
-          "msbuild FileLockAnalyzer.sln /t:Build"
-          " /p:Configuration=`"$config`""
-          " /p:Platform=`"$arch`""
-          " /p:PlatformToolset=v143 /p:PreferredToolArchitecture=x64 /p:WindowsTargetPlatformVersion=10.0"
-          " /p:UseOfMfc=Dynamic /p:CharacterSet=Unicode"
-          " /p:BuildInParallel=true /p:TrackFileAccess=false /p:SkipInvalidConfigurations=true"
-          " /maxcpucount /nologo /verbosity:minimal"
-        ) -join ""
-        $cmdForCmd = "$cmd > ""$buildLog"" 2>&1"
+        # Keep runner logs small: call MSBuild directly from PowerShell and redirect all native output to file.
+        $msbuildArgs = @(
+          "FileLockAnalyzer.sln",
+          "/t:Build",
+          "/p:Configuration=$config",
+          "/p:Platform=$arch",
+          "/p:PlatformToolset=v143",
+          "/p:PreferredToolArchitecture=x64",
+          "/p:WindowsTargetPlatformVersion=10.0",
+          "/p:UseOfMfc=Dynamic",
+          "/p:CharacterSet=Unicode",
+          "/p:BuildInParallel=true",
+          "/p:TrackFileAccess=false",
+          "/p:SkipInvalidConfigurations=true",
+          "/maxcpucount",
+          "/nologo",
+          "/verbosity:minimal"
+        )
 
         Write-Host "::group::MSBuild invokation"
-        Write-Host  $cmd
+        Write-Host  ("msbuild " + ($msbuildArgs -join ' '))
         Write-Host  "Log file     : $buildLog"
         Write-Host "::endgroup::"
 
-        & cmd.exe /d /s /c $cmdForCmd
+        & msbuild @msbuildArgs *> $buildLog
         $exitCode = $LASTEXITCODE
 
         # ---------- Diagnose: scan saved log for error patterns, print compact summary ----------
