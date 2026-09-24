@@ -45,7 +45,17 @@ jobs:
 
       - name: Build solution
         shell: cmd
-        run: msbuild FileLockAnalyzer.sln /m /nologo /p:Configuration=${{ matrix.configuration }} /p:Platform=${{ matrix.platform }} /p:PlatformToolset=v143 /p:PreferredToolArchitecture=x64 /p:WindowsTargetPlatformVersion=10.0 /p:UseOfMfc=Dynamic /p:CharacterSet=Unicode
+        run: if not exist _logs mkdir _logs && msbuild FileLockAnalyzer.sln /m /nologo /clp:ErrorsOnly;Summary /fileLogger /fileLoggerParameters:LogFile=_logs\msbuild_${{ matrix.configuration }}_${{ matrix.platform }}.log;Verbosity=diagnostic /p:Configuration=${{ matrix.configuration }} /p:Platform=${{ matrix.platform }} /p:PlatformToolset=v143 /p:PreferredToolArchitecture=x64 /p:WindowsTargetPlatformVersion=10.0 /p:UseOfMfc=Dynamic /p:CharacterSet=Unicode
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs_${{ matrix.configuration }}_${{ matrix.platform }}
+          path: _logs/*.log
+          retention-days: 7
+          compression-level: 6
+          if-no-files-found: warn
 
       - name: Upload artifacts
         if: success()
