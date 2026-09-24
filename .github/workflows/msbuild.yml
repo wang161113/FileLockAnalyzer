@@ -56,30 +56,35 @@ jobs:
         $config     = "${{ matrix.configuration }}"
 
         $repoRoot   = (Resolve-Path .).Path.TrimEnd('\')
+        $logDir     = "$repoRoot\_logs"
+        $null       = New-Item -ItemType Directory -Force -Path $logDir
+        $buildLog   = Join-Path $logDir "msbuild_${platDir}_${config}.log"
 
-        # ---------- MSBuild command line matches Run #2 success exactly: no OutDir/IntDir override, no binlog, no fancy filters ----------
+        # Keep runner logs small: redirect full MSBuild output to file, then print only filtered diagnostics.
         $cmd = @(
-          "& msbuild FileLockAnalyzer.sln /t:Build"
+          "msbuild FileLockAnalyzer.sln /t:Build"
           " /p:Configuration=`"$config`""
           " /p:Platform=`"$arch`""
           " /p:PlatformToolset=v143 /p:PreferredToolArchitecture=x64 /p:WindowsTargetPlatformVersion=10.0"
           " /p:UseOfMfc=Dynamic /p:CharacterSet=Unicode"
           " /p:BuildInParallel=true /p:TrackFileAccess=false /p:SkipInvalidConfigurations=true"
-          " /maxcpucount /nologo /verbosity:normal"
+          " /maxcpucount /nologo /verbosity:minimal"
         ) -join ""
+        $cmdForCmd = "$cmd > ""$buildLog"" 2>&1"
 
         Write-Host "::group::MSBuild invokation"
         Write-Host  $cmd
+        Write-Host  "Log file     : $buildLog"
         Write-Host "::endgroup::"
 
-        $stdout = iex $cmd 2>&1 | Out-String
+        & cmd.exe /d /s /c $cmdForCmd
         $exitCode = $LASTEXITCODE
 
-        # ---------- Diagnose: scan stdout for error patterns, print summary + last 40 lines on failure ----------
+        # ---------- Diagnose: scan saved log for error patterns, print compact summary ----------
         Write-Host "::group::Build result"
         Write-Host  "Exit code    : $exitCode"
+        $lines = if (Test-Path -LiteralPath $buildLog) { [System.IO.File]::ReadAllLines($buildLog) } else { @() }
         if ($exitCode -ne 0) {
-          $lines = ($stdout -split "`r?`n")
           $matches = @()
           foreach ($l in $lines) {
             if ($l -match '(?i)\b(error\s*[A-Z]{2,}\d+|: error )') { $matches += $l }
@@ -87,11 +92,10 @@ jobs:
           Write-Host  "------ error lines ($($matches.Count)) ------"
           $n = 0
           foreach ($m in $matches) { Write-Host "  ERR> $m"; $n++; if ($n -ge 40) { break } }
-          Write-Host  "------ tail 40 ------"
-          $start = [Math]::Max(0, $lines.Count - 40)
+          Write-Host  "------ tail 60 ------"
+          $start = [Math]::Max(0, $lines.Count - 60)
           for ($i = $start; $i -lt $lines.Count; $i++) { Write-Host ("  L{0,-4} {1}" -f ($i+1), $lines[$i]) }
         } else {
-          $lines = ($stdout -split "`r?`n")
           Write-Host  "Build summary : $($lines.Count) lines"
         }
 
