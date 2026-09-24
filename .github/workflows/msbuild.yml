@@ -45,15 +45,23 @@ jobs:
 
     - name: Restore NuGet packages
       working-directory: ${{env.SOLUTION_FILE_PATH}}
-      run: nuget restore FileLockAnalyzer.sln
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        nuget restore FileLockAnalyzer.sln
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "::error::nuget restore failed with exit code $LASTEXITCODE"
+          exit $LASTEXITCODE
+        }
 
     - name: Build ${{ matrix.configuration }} ${{ matrix.platform }}
       working-directory: ${{env.SOLUTION_FILE_PATH}}
       shell: pwsh
       run: |
+        $ErrorActionPreference = 'Stop'
+
         $msbuildArgs = @(
           "FileLockAnalyzer.sln",
-          "/t:Build",
           "/p:Configuration=`"${{ matrix.configuration }}`"",
           "/p:Platform=`"${{ matrix.platform }}`"",
           "/p:PreferredToolArchitecture=x64",
@@ -69,76 +77,89 @@ jobs:
           "/p:BuildInParallel=true",
           "/p:UseOfMfc=Dynamic",
           "/p:CharacterSet=Unicode",
-          "/consoleloggerparameters:Summary;ErrorsOnly;WarningsOnly"
+          "/consoleloggerparameters:Summary;ErrorsOnly"
         )
-        Write-Host "::group::MSBuild command line"
-        Write-Host "msbuild $($msbuildArgs -join ' ')"
-        Write-Host "::endgroup::"
+        $cmdLine = "msbuild " + ($msbuildArgs -join ' ')
+        Write-Host "::debug::MSBuild command: $cmdLine"
         & msbuild @msbuildArgs
-        $exitCode = $LASTEXITCODE
-        if ($exitCode -ne 0) {
-          Write-Host "::error::MSBuild failed with exit code $exitCode"
-          exit $exitCode
-        }
+        $msbuildExit = $LASTEXITCODE
 
-        $platformDir = if ("${{ matrix.platform }}" -eq "Win32") { "x86", "Win32" } else { "x64" }
-        $found = @()
-        foreach ($p in $platformDir) {
-          $candidate = Join-Path (Resolve-Path .) $p "${{ matrix.configuration }}"
-          if (Test-Path $candidate) {
-            $exes = Get-ChildItem -Path $candidate -Filter *.exe
-            if ($exes) { $found += $candidate }
+        $root = Resolve-Path .
+        $platformDirs = if ("${{ matrix.platform }}" -eq "Win32") { @("x86", "Win32") } else { @("x64") }
+        $foundDirs = @()
+        foreach ($pd in $platformDirs) {
+          $candidate = Join-Path $root $pd "${{ matrix.configuration }}"
+          if (Test-Path -LiteralPath $candidate) {
+            $exes = [System.IO.Directory]::GetFiles($candidate, "*.exe")
+            if ($exes.Count -gt 0) { $foundDirs += $candidate }
           }
         }
-        if (-not $found) {
-          Write-Host "::warning::Standard output dirs not found. Searching entire repo for FileLockAnalyzer.exe..."
-          $exes = Get-ChildItem -Path (Resolve-Path .) -Filter FileLockAnalyzer.exe -Recurse -ErrorAction SilentlyContinue |
-                  Where-Object { $_.FullName -notmatch '\\obj\\' }
-          if ($exes) { $found += $exes[0].DirectoryName }
+        if ($foundDirs.Count -eq 0) {
+          $allExes = [System.IO.Directory]::GetFiles("$root", "FileLockAnalyzer.exe", [System.IO.SearchOption]::AllDirectories)
+          foreach ($e in $allExes) {
+            if ($e -notmatch [regex]::Escape('\obj\')) {
+              $d = [System.IO.Path]::GetDirectoryName($e)
+              if ($foundDirs -notcontains $d) { $foundDirs += $d }
+            }
+          }
         }
-        Write-Host "::group::Detected output directories"
-        foreach ($d in $found) { Write-Host "  - $d" }
-        Write-Host "::endgroup::"
-        $env:OUTPUT_DIRS = $found -join '|'
-        "OUTPUT_DIRS=$($env:OUTPUT_DIRS)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        if ($foundDirs.Count -eq 0) {
+          Write-Host "::warning::No FileLockAnalyzer.exe found anywhere. Listing top-level directories for diagnosis:"
+          foreach ($d in [System.IO.Directory]::GetDirectories("$root")) {
+            $name = [System.IO.Path]::GetFileName($d.TrimEnd('\'))
+            Write-Host "  D  $name"
+          }
+        }
 
-        if (-not $found) {
-          Write-Host "::error::No output directory with FileLockAnalyzer.exe found. Build may have produced no artifacts."
+        $OUTPUT_DIRS = if ($foundDirs.Count) { $foundDirs -join '|' } else { '' }
+        Add-Content -Path $env:GITHUB_ENV -Value "OUTPUT_DIRS=$OUTPUT_DIRS" -Encoding utf8
+        Write-Host "::notice::OUTPUT_DIRS=$OUTPUT_DIRS"
+
+        if ($msbuildExit -ne 0) {
+          Write-Host "::error::MSBuild failed with exit code $msbuildExit"
+          exit $msbuildExit
+        }
+        if ($foundDirs.Count -eq 0) {
+          Write-Host "::error::MSBuild reported success but no .exe was produced."
           exit 1
         }
 
     - name: Prepare build artifacts
       if: success()
+      working-directory: ${{env.SOLUTION_FILE_PATH}}
       shell: pwsh
       run: |
-        $staging = Join-Path (Resolve-Path .) "_staging" "${{ matrix.configuration }}_${{ matrix.platform }}"
-        New-Item -ItemType Directory -Force -Path $staging | Out-Null
+        $ErrorActionPreference = 'Stop'
+        $root = Resolve-Path .
+        $staging = Join-Path $root "_staging" "${{ matrix.configuration }}_${{ matrix.platform }}"
+        $null = New-Item -ItemType Directory -Force -Path $staging
 
-        $dirs = $env:OUTPUT_DIRS -split '\|' | Where-Object { $_ }
+        $dirs = if ($env:OUTPUT_DIRS) { $env:OUTPUT_DIRS -split '\|' } else { @() }
+        $seen = @{}
         foreach ($dir in $dirs) {
-          Get-ChildItem -Path $dir -File -Include *.exe,*.dll,*.pdb |
-            ForEach-Object {
-              $dest = Join-Path $staging $_.Name
-              if (-not (Test-Path $dest)) { Copy-Item $_.FullName -Destination $dest -Force }
+          if (-not (Test-Path -LiteralPath $dir)) { continue }
+          foreach ($ext in @("*.exe", "*.dll", "*.pdb")) {
+            foreach ($file in [System.IO.Directory]::GetFiles($dir, $ext)) {
+              $name = [System.IO.Path]::GetFileName($file)
+              if (-not $seen.ContainsKey($name)) {
+                $dest = Join-Path $staging $name
+                [System.IO.File]::Copy($file, $dest, $true)
+                $size = [math]::Round(([System.IO.FileInfo]$file).Length / 1KB, 2)
+                Write-Host "  $name  $size KB"
+                $seen[$name] = $true
+              }
             }
-        }
-
-        Write-Host "::group::Staged artifacts ($staging)"
-        $items = Get-ChildItem -Path $staging -File | Sort-Object Name
-        if (-not $items) {
-          Write-Host "  (empty)"
-        } else {
-          foreach ($f in $items) {
-            Write-Host "  $($f.Name)  $([math]::Round($_.Length / 1KB, 2)) KB"
           }
         }
-        Write-Host "::endgroup::"
+        if ($seen.Count -eq 0) {
+          Write-Host "::warning::No artifacts were copied to staging."
+        }
 
     - name: Upload build artifacts
       if: success()
       uses: actions/upload-artifact@v4
       with:
         name: FileLockAnalyzer_${{ matrix.configuration }}_${{ matrix.platform }}
-        path: _staging/${{ matrix.configuration }}_${{ matrix.platform }}/*
+        path: _staging/${{ matrix.configuration }}_${{ matrix.platform }}/
         retention-days: 30
-        if-no-files-found: error
+        if-no-files-found: warn
