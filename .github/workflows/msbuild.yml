@@ -133,7 +133,9 @@ jobs:
         run: |
           $assetRoot = Join-Path $PWD "release_assets"
           $zipRoot = Join-Path $PWD "_release_zips"
+          $stageRoot = Join-Path $PWD "_release_stage"
           New-Item -ItemType Directory -Force -Path $zipRoot | Out-Null
+          New-Item -ItemType Directory -Force -Path $stageRoot | Out-Null
 
           $artifactDirs = Get-ChildItem $assetRoot -Directory | Where-Object { $_.Name -like "FileLockAnalyzer_Release_*" }
           if (-not $artifactDirs) {
@@ -141,8 +143,22 @@ jobs:
           }
 
           foreach ($dir in $artifactDirs) {
+            $stageDir = Join-Path $stageRoot $dir.Name
+            New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
+
+            $releaseFiles = Get-ChildItem $dir.FullName -Recurse -File | Where-Object {
+              $_.Extension -in @(".exe", ".dll")
+            }
+            if (-not $releaseFiles) {
+              throw "No exe/dll files found in $($dir.Name)."
+            }
+
+            foreach ($file in $releaseFiles) {
+              Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $stageDir $file.Name) -Force
+            }
+
             $zipPath = Join-Path $zipRoot ($dir.Name + ".zip")
-            Compress-Archive -Path (Join-Path $dir.FullName "*") -DestinationPath $zipPath -Force
+            Compress-Archive -Path (Join-Path $stageDir "*") -DestinationPath $zipPath -Force
           }
 
       - name: Publish GitHub Release assets
