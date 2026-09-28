@@ -113,6 +113,8 @@ public:
 
     void AddTrayIcon();
     void RemoveTrayIcon();
+    void LoadWindowPlacement();
+    void SaveWindowPlacement();
 
     void ApplyLanguage();
     LPCTSTR Str(int nResId);

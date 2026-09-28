@@ -282,11 +282,17 @@ BOOL CMainDlg::OnInitDialog()
     SetIcon(m_hIcon, TRUE);
     SetIcon(m_hIcon, FALSE);
 
+    // 允许来自低完整性级别进程（如 Explorer）把路径和唤起消息发送给已提权实例。
+    ::ChangeWindowMessageFilterEx(m_hWnd, WM_COPYDATA, MSGFLT_ALLOW, NULL);
+    if (g_msgShowInstance != 0)
+        ::ChangeWindowMessageFilterEx(m_hWnd, g_msgShowInstance, MSGFLT_ALLOW, NULL);
+
     DragAcceptFiles(TRUE);
 
     InitListView();
     BuildAnchorList();
     ApplyLanguage();
+    LoadWindowPlacement();
 
     SetStatus(_T("%s"), Str(S_STATUS_READY));
     AddTrayIcon();
@@ -306,6 +312,7 @@ LRESULT CMainDlg::OnPostInitAnalyze(WPARAM wParam, LPARAM lParam)
 
 void CMainDlg::OnDestroy()
 {
+    SaveWindowPlacement();
     RemoveTrayIcon();
     CDialogEx::OnDestroy();
 }
@@ -347,6 +354,66 @@ void CMainDlg::RemoveTrayIcon()
     nid.uID = IDI_MAIN_ICON;
     ::Shell_NotifyIcon(NIM_DELETE, &nid);
     m_bTrayReady = FALSE;
+}
+
+void CMainDlg::LoadWindowPlacement()
+{
+    CWinApp* pApp = AfxGetApp();
+    if (!pApp || !::IsWindow(m_hWnd))
+        return;
+
+    const int nLeft   = pApp->GetProfileInt(_T("Window"), _T("Left"), INT_MIN);
+    const int nTop    = pApp->GetProfileInt(_T("Window"), _T("Top"), INT_MIN);
+    const int nRight  = pApp->GetProfileInt(_T("Window"), _T("Right"), INT_MIN);
+    const int nBottom = pApp->GetProfileInt(_T("Window"), _T("Bottom"), INT_MIN);
+    if (nLeft == INT_MIN || nTop == INT_MIN || nRight == INT_MIN || nBottom == INT_MIN)
+        return;
+
+    CRect rcSaved(nLeft, nTop, nRight, nBottom);
+    if (rcSaved.Width() < 480 || rcSaved.Height() < 340)
+        return;
+
+    HMONITOR hMonitor = ::MonitorFromRect(&rcSaved, MONITOR_DEFAULTTONULL);
+    if (hMonitor == NULL)
+        return;
+
+    MONITORINFO mi = {0};
+    mi.cbSize = sizeof(mi);
+    if (!::GetMonitorInfo(hMonitor, &mi))
+        return;
+
+    CRect rcWork = mi.rcWork;
+    CRect rcIntersect;
+    if (!rcIntersect.IntersectRect(&rcSaved, &rcWork))
+        return;
+
+    SetWindowPos(NULL,
+        rcSaved.left,
+        rcSaved.top,
+        rcSaved.Width(),
+        rcSaved.Height(),
+        SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+void CMainDlg::SaveWindowPlacement()
+{
+    CWinApp* pApp = AfxGetApp();
+    if (!pApp || !::IsWindow(m_hWnd))
+        return;
+
+    WINDOWPLACEMENT wp = {0};
+    wp.length = sizeof(wp);
+    if (!::GetWindowPlacement(m_hWnd, &wp))
+        return;
+
+    const CRect& rc = wp.rcNormalPosition;
+    if (rc.Width() < 480 || rc.Height() < 340)
+        return;
+
+    pApp->WriteProfileInt(_T("Window"), _T("Left"), rc.left);
+    pApp->WriteProfileInt(_T("Window"), _T("Top"), rc.top);
+    pApp->WriteProfileInt(_T("Window"), _T("Right"), rc.right);
+    pApp->WriteProfileInt(_T("Window"), _T("Bottom"), rc.bottom);
 }
 
 LRESULT CMainDlg::OnTrayNotify(WPARAM wParam, LPARAM lParam)
